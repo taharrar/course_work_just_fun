@@ -1,6 +1,9 @@
 import sqlite3
 import hashlib
 import os
+import openpyxl
+from openpyxl.styles import Font, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 import pandas as pd
 from datetime import datetime
 from tkinter import *
@@ -8,7 +11,6 @@ from tkinter import messagebox, ttk
 from contextlib import contextmanager
 
 from tkinter import filedialog
-
 
 
 # ==================== DATABASE UTILITIES ====================
@@ -212,6 +214,8 @@ class EduEvaluationApp:
         ttk.Button(self.root, text="Yangi Test Yaratish", command=self.create_test).pack(pady=10)
         ttk.Button(self.root, text="Yangi O'quvchi Qo'shish", command=self.add_student).pack(pady=10)
         ttk.Button(self.root, text="Test Natijalarini Ko'rish", command=self.show_results).pack(pady=10)
+        ttk.Button(self.root, text="Test Natijalarini Yuklash", command=self.export_results_to_excel).pack(pady=10)
+        
 
         ttk.Button(self.root, text="Chiqish", command=self.show_login_screen).pack(pady=20)
 
@@ -462,6 +466,91 @@ class EduEvaluationApp:
             scrollbar.pack(side=RIGHT, fill=Y)
             tree.pack(expand=True, fill=BOTH)
 
+    def export_results_to_excel(self):
+        # Connect to database
+        conn = sqlite3.connect('edu_evaluation.db')
+        cursor = conn.cursor()
+        
+        # Get results data with student names
+        cursor.execute('''
+        SELECT t.nomi, u.ism, r.togri_javoblar, r.savollar_soni, r.foiz, r.otganmi, r.vaqt 
+        FROM results r
+        JOIN tests t ON r.test_id = t.id
+        JOIN users u ON r.oquvchi_id = u.id
+        WHERE t.oqituvchi_id = ?
+        ORDER BY r.vaqt DESC
+        ''', (self.current_user['id'],))
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        if not results:
+            messagebox.showinfo("Ma'lumot", "Eksport qilish uchun natijalar mavjud emas")
+            return
+        
+        # Create a new workbook
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Test Natijalari"
+        
+        # Add headers
+        headers = ["Test nomi", "O'quvchi", "To'g'ri javoblar", "Jami savollar", 
+                "Foiz", "Holat", "Vaqt"]
+        
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num, value=header)
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='center')
+        
+        # Add data rows
+        for row_num, row in enumerate(results, 2):
+            test_name, student_name, correct, total, percentage, passed, timestamp = row
+            status = "O'tdi" if passed else "O'tmadi"
+            
+            ws.cell(row=row_num, column=1, value=test_name)
+            ws.cell(row=row_num, column=2, value=student_name)
+            ws.cell(row=row_num, column=3, value=correct)
+            ws.cell(row=row_num, column=4, value=total)
+            ws.cell(row=row_num, column=5, value=f"{percentage:.1f}%")
+            ws.cell(row=row_num, column=6, value=status)
+            ws.cell(row=row_num, column=7, value=timestamp)
+        
+        # Style the worksheet
+        thin_border = Border(left=Side(style='thin'), 
+                            right=Side(style='thin'), 
+                            top=Side(style='thin'), 
+                            bottom=Side(style='thin'))
+        
+        # Set column widths and apply formatting
+        column_widths = [30, 25, 15, 15, 10, 10, 20]  # Adjust as needed
+        
+        for i, width in enumerate(column_widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = width
+        
+        for row in ws.iter_rows():
+            for cell in row:
+                cell.border = thin_border
+                if cell.row == 1:  # Header row
+                    cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+        
+        # Add summary info
+        ws.cell(row=row_num+2, column=1, value="Umumiy testlar soni:").font = Font(bold=True)
+        ws.cell(row=row_num+2, column=2, value=len(results))
+        
+        passed_count = sum(1 for row in results if row[5])
+        ws.cell(row=row_num+3, column=1, value="O'tganlar soni:").font = Font(bold=True)
+        ws.cell(row=row_num+3, column=2, value=passed_count)
+        
+        # Generate filename with current datetime
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        filename = f"test_natijalari_{timestamp}.xlsx"
+        
+        try:
+            wb.save(filename)
+            messagebox.showinfo("Muvaffaqiyatli", f"Natijalar {filename} fayliga saqlandi")
+        except Exception as e:
+            messagebox.showerror("Xatolik", f"Fayl saqlanmadi: {str(e)}")
 
     def show_student_panel(self):
         self.clear_window()
@@ -637,6 +726,8 @@ class EduEvaluationApp:
         """Xato xabarini ko'rsatish"""
         messagebox.showerror(title, message)
 
+    def 
+
 
 
 # Dasturni ishga tushurish
@@ -645,3 +736,4 @@ if __name__ == "__main__":
     root = Tk()
     app = EduEvaluationApp(root)
     root.mainloop()
+
